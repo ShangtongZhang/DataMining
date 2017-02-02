@@ -6,10 +6,17 @@
 #include "unordered_map"
 #include "unordered_set"
 #include "set"
+#include "mutex"
+#include "atomic"
+#include "thread"
+
+constexpr int TRANSACTION_POOL_SIZE = 5;
 
 //using items_t = std::set<int>;
 using items_t = std::vector<int>;
 using itemset_t = std::unordered_map<items_t, int>;
+using transaction_t = std::unordered_set<int>;
+using transactions_t = std::vector<transaction_t >;
 
 namespace std {
     template <>
@@ -24,6 +31,80 @@ namespace std {
             return seed;
         }
     };
+};
+
+transactions_t readData(const std::string& filename) {
+    std::ifstream data(filename);
+    std::string line;
+    std::stringstream ss;
+    std::vector<std::unordered_set<int>> transactions;
+    while (std::getline(data, line)) {
+        ss.clear();
+        ss << line;
+        std::unordered_set<int> items;
+        int item;
+        while (ss >> item) {
+            items.insert(item);
+        }
+        transactions.push_back(std::move(items));
+    }
+    return transactions;
+}
+
+class AsyncTransactionFeeder {
+public:
+    std::string filename;
+    std::fstream file;
+    transactions_t transactionsPool;
+    std::atomic<int> poolInPos;
+    std::atomic<int> poolOutPos;
+    std::atomic<bool> dataEnd;
+
+    AsyncTransactionFeeder(const std::string& filename) :
+            transactionsPool(TRANSACTION_POOL_SIZE),
+            filename(filename) {
+        file.open(filename);
+        poolInPos.store(0);
+        poolOutPos.store(0);
+        dataEnd.store(false);
+    }
+
+    void start() {
+        std::thread reader(&AsyncTransactionFeeder::asyncRead, this);
+    }
+
+    void asyncRead() {
+        std::string line;
+        std::stringstream ss;
+        while (file >> line) {
+            ss.clear();
+            ss << line;
+            while ((poolInPos + 1) % TRANSACTION_POOL_SIZE == poolOutPos) {}
+            auto& transaction = transactionsPool[poolInPos];
+            transaction.clear();
+            int item;
+            while (ss >> item) {
+                transaction.insert(item);
+            }
+            poolInPos = (poolInPos + 1) % TRANSACTION_POOL_SIZE;
+        }
+        dataEnd.store(true);
+    }
+
+    const transaction_t* getNextTransaction() {
+        while (true) {
+            if (dataEnd) {
+                return nullptr;
+            }
+            if (poolInPos == poolOutPos) {
+                continue;
+            }
+            auto transaction = &transactionsPool[poolOutPos];
+            poolOutPos = (poolOutPos + 1) % TRANSACTION_POOL_SIZE;
+            return transaction;
+        }
+    }
+
 };
 
 bool combinable(const items_t& items1, const items_t& items2) {
@@ -71,16 +152,10 @@ itemset_t generateC(itemset_t& L) {
     return C;
 }
 
-itemset_t L1(int minSupp, std::string filename) {
-    std::ifstream data(filename);
-    std::string line;
-    std::stringstream ss;
+itemset_t L1(int minSupp, const transactions_t& transactions) {
     std::unordered_map<int, int> count;
-    while (std::getline(data, line)) {
-        ss.clear();
-        ss << line;
-        int item;
-        while (ss >> item) {
+    for (auto& transaction : transactions) {
+        for (auto& item : transaction) {
             if (count.find(item) != count.end()) {
                 count[item] += 1;
             } else {
@@ -99,22 +174,12 @@ itemset_t L1(int minSupp, std::string filename) {
     return L;
 }
 
-itemset_t generateL(itemset_t& C, int minSupp, std::string filename) {
-    std::ifstream data(filename);
-    std::string line;
-    std::stringstream ss;
-    while (std::getline(data, line)) {
-        ss.clear();
-        ss << line;
-        std::unordered_set<int> items;
-        int item;
-        while (ss >> item) {
-            items.insert(item);
-        }
+itemset_t generateL(itemset_t& C, int minSupp, const transactions_t& transactions) {
+    for (auto& transaction : transactions){
         for (auto it = C.begin(); it != C.end(); ++it) {
             bool in = true;
             for (auto j = it->first.begin(); j != it->first.end(); ++j) {
-                if (items.find(*j) == items.end()) {
+                if (transaction.find(*j) == transaction.end()) {
                     in = false;
                     break;
                 }
@@ -137,20 +202,22 @@ itemset_t generateL(itemset_t& C, int minSupp, std::string filename) {
 
 int main() {
     int minSupport = 10;
-    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/data.txt");
-    auto L = L1(minSupport, filename);
+//    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/dataS.txt");
+    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
+    auto transactions = readData(filename);
+    auto L = L1(minSupport, transactions);
     while (true) {
         for (auto it = L.begin(); it != L.end(); ++it) {
             for (auto& item : it->first) {
                 std::cout << item << " ";
             }
-            std::cout << "->" << it->second << std::endl;
+            std::cout << "-> " << it->second << std::endl;
         }
         if (L.empty()) {
             break;
         }
         auto C = generateC(L);
-        L = generateL(C, minSupport, filename);
+        L = generateL(C, minSupport, transactions);
     }
     return 0;
 }
