@@ -11,6 +11,7 @@
 #include "thread"
 
 constexpr int TRANSACTION_POOL_SIZE = 10000;
+//constexpr int PARALLEL_FACTOR = 4;
 
 //using items_t = std::set<int>;
 using items_t = std::vector<int>;
@@ -33,24 +34,6 @@ namespace std {
     };
 };
 
-transactions_t readData(const std::string& filename) {
-    std::ifstream data(filename);
-    std::string line;
-    std::stringstream ss;
-    std::vector<std::unordered_set<int>> transactions;
-    while (std::getline(data, line)) {
-        ss.clear();
-        ss << line;
-        std::unordered_set<int> items;
-        int item;
-        while (ss >> item) {
-            items.insert(item);
-        }
-        transactions.push_back(std::move(items));
-    }
-    return transactions;
-}
-
 class AsyncTransactionFeeder {
 public:
     std::string filename;
@@ -69,15 +52,25 @@ public:
         fitInMem = true;
     }
 
+    bool dataInMem() {
+//        return false;
+        return dataEnd && fitInMem;
+    }
+
+    size_t dataSize() {
+        return poolInPos;
+    }
+
     void attachFile(const std::string& filename) {
         this->filename = filename;
         file.open(filename);
     }
 
     void reset() {
-        if (fitInMem) {
+        if (fitInMem && dataEnd) {
             poolOutPos = 0;
             dataEnd = true;
+            return;
         }
         file.close();
         file.open(filename);
@@ -205,24 +198,67 @@ itemset_t L1(int minSupp) {
     return L;
 }
 
-itemset_t generateL(itemset_t& C, int minSupp) {
-    feeder.reset();
-    feeder.start();
-    while (true) {
-        auto pTransaction = feeder.getNextTransaction();
-        if (!pTransaction) {
-            break;
-        }
-        for (auto it = C.begin(); it != C.end(); ++it) {
+void countItems(size_t startPoint, size_t endPoint, itemset_t* C, std::mutex* m) {
+    for (size_t i = startPoint; i < endPoint; ++i) {
+        auto& transaction = feeder.transactionsPool[i];
+        for (auto it = C->begin(); it != C->end(); ++it) {
             bool in = true;
             for (auto j = it->first.begin(); j != it->first.end(); ++j) {
-                if (pTransaction->find(*j) == pTransaction->end()) {
+                if (transaction.find(*j) == transaction.end()) {
                     in = false;
                     break;
                 }
             }
             if (in) {
+                m->lock();
                 it->second += 1;
+                m->unlock();
+            }
+        }
+    }
+}
+
+itemset_t generateL(itemset_t& C, int minSupp) {
+    feeder.reset();
+    feeder.start();
+    if (feeder.dataInMem()) {
+        int PARALLEL_FACTOR = std::thread::hardware_concurrency();
+        size_t len = feeder.dataSize();
+        std::mutex mUpdate;
+        std::vector<size_t > startPoint(PARALLEL_FACTOR);
+        std::vector<size_t > endPoint(PARALLEL_FACTOR);
+        size_t step = len / PARALLEL_FACTOR;
+        for (int i = 0; i < PARALLEL_FACTOR; ++i) {
+            startPoint[i] = step * i;
+            endPoint[i] = step * (i + 1);
+        }
+        endPoint.back() = std::min(endPoint.back(), len);
+        std::vector<std::thread> counters(PARALLEL_FACTOR);
+        for (int i = 0; i < PARALLEL_FACTOR; ++i) {
+            counters.emplace(counters.begin() + i, std::thread(countItems, startPoint[i], endPoint[i], &C, &mUpdate));
+        }
+        for (auto& t : counters) {
+            if (t.joinable()) {
+                t.join();
+            }
+        }
+    } else {
+        while (true) {
+            auto pTransaction = feeder.getNextTransaction();
+            if (!pTransaction) {
+                break;
+            }
+            for (auto it = C.begin(); it != C.end(); ++it) {
+                bool in = true;
+                for (auto j = it->first.begin(); j != it->first.end(); ++j) {
+                    if (pTransaction->find(*j) == pTransaction->end()) {
+                        in = false;
+                        break;
+                    }
+                }
+                if (in) {
+                    it->second += 1;
+                }
             }
         }
     }
