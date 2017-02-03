@@ -14,11 +14,11 @@
 constexpr int TRANSACTION_POOL_SIZE = 10000000;
 //constexpr int PARALLEL_FACTOR = 4;
 
-//using items_t = std::set<int>;
 using items_t = std::vector<int>;
 //using itemset_t = std::unordered_map<items_t, int>;
 using itemset_t = std::map<items_t, int>;
-using transaction_t = std::unordered_set<int>;
+//using transaction_t = std::unordered_set<int>;
+using transaction_t = std::set<int>;
 using transactions_t = std::vector<transaction_t>;
 
 namespace std {
@@ -276,9 +276,9 @@ itemset_t generateL(itemset_t& C, int minSupp) {
 //void generateStrongRule(items_t)
 
 int main() {
-    int minSupport = 2;
-//    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/data.txt");
-    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
+    int minSupport = 10;
+    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/data.txt");
+//    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
     feeder.attachFile(filename);
     auto L = L1(minSupport);
     while (true) {
@@ -304,5 +304,14 @@ int main() {
         std::cout << C.size() << std::endl;
         L = generateL(C, minSupport);
     }
+//    std::ofstream out("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/out.txt");
+//    for (int i = 0; i < feeder.dataSize(); ++i) {
+//        for (auto& item : feeder.transactionsPool[i]) {
+//            out << item << " ";
+//        }
+//        out << std::endl;
+//    }
+//    out.close();
+
     return 0;
 }
