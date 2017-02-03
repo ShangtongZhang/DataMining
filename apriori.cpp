@@ -289,7 +289,7 @@ int main() {
             }
             std::cout << "-> " << it->second << std::endl;
         }
-//        std::cout << L.size() << std::endl;
+        std::cout << L.size() << std::endl;
         if (L.empty()) {
             break;
         }
