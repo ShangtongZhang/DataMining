@@ -6,6 +6,7 @@
 #include "unordered_map"
 #include "unordered_set"
 #include "set"
+#include "map"
 #include "mutex"
 #include "atomic"
 #include "thread"
@@ -15,7 +16,8 @@ constexpr int TRANSACTION_POOL_SIZE = 10000000;
 
 //using items_t = std::set<int>;
 using items_t = std::vector<int>;
-using itemset_t = std::unordered_map<items_t, int>;
+//using itemset_t = std::unordered_map<items_t, int>;
+using itemset_t = std::map<items_t, int>;
 using transaction_t = std::unordered_set<int>;
 using transactions_t = std::vector<transaction_t>;
 
@@ -274,8 +276,8 @@ itemset_t generateL(itemset_t& C, int minSupp) {
 //void generateStrongRule(items_t)
 
 int main() {
-    int minSupport = 5;
-    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/dataS.txt");
+    int minSupport = 10;
+    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/data.txt");
 //    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
     feeder.attachFile(filename);
     auto L = L1(minSupport);
