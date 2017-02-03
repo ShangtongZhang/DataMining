@@ -276,19 +276,19 @@ itemset_t generateL(itemset_t& C, int minSupp) {
 //void generateStrongRule(items_t)
 
 int main() {
-    int minSupport = 10;
-    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/data.txt");
-//    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
+    int minSupport = 2;
+//    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/data.txt");
+    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
     feeder.attachFile(filename);
     auto L = L1(minSupport);
     while (true) {
 //        std::cout << "Freq" << std::endl;
-        for (auto it = L.begin(); it != L.end(); ++it) {
-            for (auto& item : it->first) {
-                std::cout << item << " ";
-            }
-            std::cout << "-> " << it->second << std::endl;
-        }
+//        for (auto it = L.begin(); it != L.end(); ++it) {
+//            for (auto& item : it->first) {
+//                std::cout << item << " ";
+//            }
+//            std::cout << "-> " << it->second << std::endl;
+//        }
         std::cout << L.size() << std::endl;
         if (L.empty()) {
             break;
@@ -301,6 +301,7 @@ int main() {
 //            }
 //            std::cout << "-> " << it->second << std::endl;
 //        }
+        std::cout << C.size() << std::endl;
         L = generateL(C, minSupport);
     }
     return 0;
