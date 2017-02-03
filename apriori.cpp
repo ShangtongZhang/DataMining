@@ -232,7 +232,7 @@ itemset_t generateL(itemset_t& C, int minSupp) {
             startPoint[i] = step * i;
             endPoint[i] = step * (i + 1);
         }
-        endPoint.back() = std::min(endPoint.back(), len);
+        endPoint.back() = len;
         std::vector<std::thread> counters(PARALLEL_FACTOR);
         for (int i = 0; i < PARALLEL_FACTOR; ++i) {
             counters.emplace(counters.begin() + i, std::thread(countItems, startPoint[i], endPoint[i], &C, &mUpdate));
@@ -287,6 +287,7 @@ int main() {
             }
             std::cout << "-> " << it->second << std::endl;
         }
+//        std::cout << L.size() << std::endl;
         if (L.empty()) {
             break;
         }
