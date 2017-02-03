@@ -10,7 +10,7 @@
 #include "atomic"
 #include "thread"
 
-constexpr int TRANSACTION_POOL_SIZE = 10000;
+constexpr int TRANSACTION_POOL_SIZE = 10000000;
 //constexpr int PARALLEL_FACTOR = 4;
 
 //using items_t = std::set<int>;
