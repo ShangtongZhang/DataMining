@@ -10,7 +10,7 @@
 #include "atomic"
 #include "thread"
 
-constexpr int TRANSACTION_POOL_SIZE = 100;
+constexpr int TRANSACTION_POOL_SIZE = 10000;
 
 //using items_t = std::set<int>;
 using items_t = std::vector<int>;
@@ -238,14 +238,13 @@ itemset_t generateL(itemset_t& C, int minSupp) {
 //void generateStrongRule(items_t)
 
 int main() {
-    int minSupport = 2;
-//    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/dataS.txt");
-    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
+    int minSupport = 5;
+    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/dataS.txt");
+//    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
     feeder.attachFile(filename);
-//    auto transactions = readData(filename);
     auto L = L1(minSupport);
     while (true) {
-        std::cout << "Freq" << std::endl;
+//        std::cout << "Freq" << std::endl;
         for (auto it = L.begin(); it != L.end(); ++it) {
             for (auto& item : it->first) {
                 std::cout << item << " ";
@@ -256,14 +255,13 @@ int main() {
             break;
         }
         auto C = generateC(L);
-        std::cout << "Candidate:" << std::endl;
-        for (auto it = C.begin(); it != C.end(); ++it) {
-            for (auto& item : it->first) {
-                std::cout << item << " ";
-            }
-            std::cout << "-> " << it->second << std::endl;
-        }
-
+//        std::cout << "Candidate:" << std::endl;
+//        for (auto it = C.begin(); it != C.end(); ++it) {
+//            for (auto& item : it->first) {
+//                std::cout << item << " ";
+//            }
+//            std::cout << "-> " << it->second << std::endl;
+//        }
         L = generateL(C, minSupport);
     }
     return 0;
