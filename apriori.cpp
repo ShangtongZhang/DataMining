@@ -10,13 +10,13 @@
 #include "atomic"
 #include "thread"
 
-constexpr int TRANSACTION_POOL_SIZE = 5;
+constexpr int TRANSACTION_POOL_SIZE = 100;
 
 //using items_t = std::set<int>;
 using items_t = std::vector<int>;
 using itemset_t = std::unordered_map<items_t, int>;
 using transaction_t = std::unordered_set<int>;
-using transactions_t = std::vector<transaction_t >;
+using transactions_t = std::vector<transaction_t>;
 
 namespace std {
     template <>
@@ -59,24 +59,46 @@ public:
     std::atomic<int> poolInPos;
     std::atomic<int> poolOutPos;
     std::atomic<bool> dataEnd;
+    std::atomic<bool> fitInMem;
 
-    AsyncTransactionFeeder(const std::string& filename) :
-            transactionsPool(TRANSACTION_POOL_SIZE),
-            filename(filename) {
+    AsyncTransactionFeeder() :
+            transactionsPool(TRANSACTION_POOL_SIZE) {
+        poolInPos = 0;
+        poolOutPos = 0;
+        dataEnd = false;
+        fitInMem = true;
+    }
+
+    void attachFile(const std::string& filename) {
+        this->filename = filename;
         file.open(filename);
-        poolInPos.store(0);
-        poolOutPos.store(0);
-        dataEnd.store(false);
+    }
+
+    void reset() {
+        if (fitInMem) {
+            poolOutPos = 0;
+            dataEnd = true;
+        }
+        file.close();
+        file.open(filename);
+        poolInPos = poolOutPos = 0;
+        dataEnd = false;
+        transactionsPool.clear();
+        transactionsPool.resize(TRANSACTION_POOL_SIZE);
     }
 
     void start() {
+        if (dataEnd) {
+            return;
+        }
         std::thread reader(&AsyncTransactionFeeder::asyncRead, this);
+        reader.detach();
     }
 
     void asyncRead() {
         std::string line;
         std::stringstream ss;
-        while (file >> line) {
+        while (std::getline(file, line)) {
             ss.clear();
             ss << line;
             while ((poolInPos + 1) % TRANSACTION_POOL_SIZE == poolOutPos) {}
@@ -86,6 +108,9 @@ public:
             while (ss >> item) {
                 transaction.insert(item);
             }
+            if (poolInPos + 1 == TRANSACTION_POOL_SIZE) {
+                fitInMem = false;
+            }
             poolInPos = (poolInPos + 1) % TRANSACTION_POOL_SIZE;
         }
         dataEnd.store(true);
@@ -93,10 +118,10 @@ public:
 
     const transaction_t* getNextTransaction() {
         while (true) {
-            if (dataEnd) {
-                return nullptr;
-            }
             if (poolInPos == poolOutPos) {
+                if (dataEnd) {
+                    return nullptr;
+                }
                 continue;
             }
             auto transaction = &transactionsPool[poolOutPos];
@@ -106,6 +131,8 @@ public:
     }
 
 };
+
+AsyncTransactionFeeder feeder;
 
 bool combinable(const items_t& items1, const items_t& items2) {
     auto it1 = items1.begin();
@@ -140,7 +167,6 @@ itemset_t generateC(itemset_t& L) {
         for (auto j = std::next(i); j != L.end(); ++j) {
             if (combinable(i->first, j->first)) {
                 items_t items(i->first);
-//                items.insert(*std::prev(j->first.end()));
                 items.push_back(*std::prev(j->first.end()));
                 std::sort(items.begin(), items.end());
                 if (!prune(items, L)) {
@@ -152,10 +178,16 @@ itemset_t generateC(itemset_t& L) {
     return C;
 }
 
-itemset_t L1(int minSupp, const transactions_t& transactions) {
+itemset_t L1(int minSupp) {
     std::unordered_map<int, int> count;
-    for (auto& transaction : transactions) {
-        for (auto& item : transaction) {
+    feeder.reset();
+    feeder.start();
+    while (true) {
+        auto pTransaction = feeder.getNextTransaction();
+        if (!pTransaction) {
+            break;
+        }
+        for (auto& item : *pTransaction) {
             if (count.find(item) != count.end()) {
                 count[item] += 1;
             } else {
@@ -168,18 +200,23 @@ itemset_t L1(int minSupp, const transactions_t& transactions) {
         if (it->second >= minSupp) {
             std::vector<int> items{it->first};
             L[items] = it->second;
-//            L.insert(std::pair<items_t , int>(items, it->second));
         }
     }
     return L;
 }
 
-itemset_t generateL(itemset_t& C, int minSupp, const transactions_t& transactions) {
-    for (auto& transaction : transactions){
+itemset_t generateL(itemset_t& C, int minSupp) {
+    feeder.reset();
+    feeder.start();
+    while (true) {
+        auto pTransaction = feeder.getNextTransaction();
+        if (!pTransaction) {
+            break;
+        }
         for (auto it = C.begin(); it != C.end(); ++it) {
             bool in = true;
             for (auto j = it->first.begin(); j != it->first.end(); ++j) {
-                if (transaction.find(*j) == transaction.end()) {
+                if (pTransaction->find(*j) == pTransaction->end()) {
                     in = false;
                     break;
                 }
@@ -201,12 +238,14 @@ itemset_t generateL(itemset_t& C, int minSupp, const transactions_t& transaction
 //void generateStrongRule(items_t)
 
 int main() {
-    int minSupport = 10;
+    int minSupport = 2;
 //    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/dataS.txt");
     std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
-    auto transactions = readData(filename);
-    auto L = L1(minSupport, transactions);
+    feeder.attachFile(filename);
+//    auto transactions = readData(filename);
+    auto L = L1(minSupport);
     while (true) {
+        std::cout << "Freq" << std::endl;
         for (auto it = L.begin(); it != L.end(); ++it) {
             for (auto& item : it->first) {
                 std::cout << item << " ";
@@ -217,7 +256,15 @@ int main() {
             break;
         }
         auto C = generateC(L);
-        L = generateL(C, minSupport, transactions);
+        std::cout << "Candidate:" << std::endl;
+        for (auto it = C.begin(); it != C.end(); ++it) {
+            for (auto& item : it->first) {
+                std::cout << item << " ";
+            }
+            std::cout << "-> " << it->second << std::endl;
+        }
+
+        L = generateL(C, minSupport);
     }
     return 0;
 }
