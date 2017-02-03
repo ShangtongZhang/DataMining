@@ -15,9 +15,10 @@ constexpr int TRANSACTION_POOL_SIZE = 10000000;
 //constexpr int PARALLEL_FACTOR = 4;
 
 using items_t = std::vector<int>;
+//What a fuck that hash table should be slower than rb tree...
 //using itemset_t = std::unordered_map<items_t, int>;
-using itemset_t = std::map<items_t, int>;
 //using transaction_t = std::unordered_set<int>;
+using itemset_t = std::map<items_t, int>;
 using transaction_t = std::set<int>;
 using transactions_t = std::vector<transaction_t>;
 
@@ -304,14 +305,5 @@ int main() {
         std::cout << C.size() << std::endl;
         L = generateL(C, minSupport);
     }
-//    std::ofstream out("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/out.txt");
-//    for (int i = 0; i < feeder.dataSize(); ++i) {
-//        for (auto& item : feeder.transactionsPool[i]) {
-//            out << item << " ";
-//        }
-//        out << std::endl;
-//    }
-//    out.close();
-
     return 0;
 }
