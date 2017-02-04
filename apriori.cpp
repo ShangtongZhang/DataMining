@@ -1,3 +1,4 @@
+#include "iomanip"
 #include "iostream"
 #include "fstream"
 #include "vector"
@@ -11,11 +12,8 @@
 #include "atomic"
 #include "thread"
 
-constexpr int TRANSACTION_POOL_SIZE = 10000000;
-//constexpr int PARALLEL_FACTOR = 4;
-
 using items_t = std::vector<int>;
-//What a fuck that hash table should be slower than rb tree...
+// how should hash table be slower than rb tree
 //using itemset_t = std::unordered_map<items_t, int>;
 //using transaction_t = std::unordered_set<int>;
 using itemset_t = std::map<items_t, int>;
@@ -39,6 +37,7 @@ namespace std {
 
 class AsyncTransactionFeeder {
 public:
+    const int poolSize;
     std::string filename;
     std::fstream file;
     transactions_t transactionsPool;
@@ -48,7 +47,8 @@ public:
     std::atomic<bool> fitInMem;
 
     AsyncTransactionFeeder() :
-            transactionsPool(TRANSACTION_POOL_SIZE) {
+            poolSize(10000000),
+            transactionsPool(poolSize) {
         poolInPos = 0;
         poolOutPos = 0;
         dataEnd = false;
@@ -80,7 +80,7 @@ public:
         poolInPos = poolOutPos = 0;
         dataEnd = false;
         transactionsPool.clear();
-        transactionsPool.resize(TRANSACTION_POOL_SIZE);
+        transactionsPool.resize(poolSize);
     }
 
     void start() {
@@ -97,17 +97,17 @@ public:
         while (std::getline(file, line)) {
             ss.clear();
             ss << line;
-            while ((poolInPos + 1) % TRANSACTION_POOL_SIZE == poolOutPos) {}
+            while ((poolInPos + 1) % poolSize == poolOutPos) {}
             auto& transaction = transactionsPool[poolInPos];
             transaction.clear();
             int item;
             while (ss >> item) {
                 transaction.insert(item);
             }
-            if (poolInPos + 1 == TRANSACTION_POOL_SIZE) {
+            if (poolInPos + 1 == poolSize) {
                 fitInMem = false;
             }
-            poolInPos = (poolInPos + 1) % TRANSACTION_POOL_SIZE;
+            poolInPos = (poolInPos + 1) % poolSize;
         }
         dataEnd.store(true);
     }
@@ -121,7 +121,7 @@ public:
                 continue;
             }
             auto transaction = &transactionsPool[poolOutPos];
-            poolOutPos = (poolOutPos + 1) % TRANSACTION_POOL_SIZE;
+            poolOutPos = (poolOutPos + 1) % poolSize;
             return transaction;
         }
     }
@@ -174,7 +174,7 @@ itemset_t generateC(itemset_t& L) {
     return C;
 }
 
-itemset_t L1(int minSupp) {
+itemset_t L1(float minSuppRatio, float& minSupp, int& nTransactions) {
     std::unordered_map<int, int> count;
     feeder.reset();
     feeder.start();
@@ -183,6 +183,7 @@ itemset_t L1(int minSupp) {
         if (!pTransaction) {
             break;
         }
+        nTransactions++;
         for (auto& item : *pTransaction) {
             if (count.find(item) != count.end()) {
                 count[item] += 1;
@@ -191,6 +192,7 @@ itemset_t L1(int minSupp) {
             }
         }
     }
+    minSupp = nTransactions * minSuppRatio;
     itemset_t L;
     for (auto it = count.begin(); it != count.end(); ++it) {
         if (it->second >= minSupp) {
@@ -221,23 +223,23 @@ void countItems(size_t startPoint, size_t endPoint, itemset_t* C, std::mutex* m)
     }
 }
 
-itemset_t generateL(itemset_t& C, int minSupp) {
+itemset_t generateL(itemset_t& C, float minSupp) {
     feeder.reset();
     feeder.start();
     if (feeder.dataInMem()) {
-        int PARALLEL_FACTOR = std::thread::hardware_concurrency();
+        int factor = std::thread::hardware_concurrency();
         size_t len = feeder.dataSize();
         std::mutex mUpdate;
-        std::vector<size_t > startPoint(PARALLEL_FACTOR);
-        std::vector<size_t > endPoint(PARALLEL_FACTOR);
-        size_t step = len / PARALLEL_FACTOR;
-        for (int i = 0; i < PARALLEL_FACTOR; ++i) {
+        std::vector<size_t > startPoint(factor);
+        std::vector<size_t > endPoint(factor);
+        size_t step = len / factor;
+        for (int i = 0; i < factor; ++i) {
             startPoint[i] = step * i;
             endPoint[i] = step * (i + 1);
         }
         endPoint.back() = len;
-        std::vector<std::thread> counters(PARALLEL_FACTOR);
-        for (int i = 0; i < PARALLEL_FACTOR; ++i) {
+        std::vector<std::thread> counters(factor);
+        for (int i = 0; i < factor; ++i) {
             counters.emplace(counters.begin() + i, std::thread(countItems, startPoint[i], endPoint[i], &C, &mUpdate));
         }
         for (auto& t : counters) {
@@ -274,14 +276,97 @@ itemset_t generateL(itemset_t& C, int minSupp) {
     return L;
 }
 
-//void generateStrongRule(items_t)
+std::vector<itemset_t> frequentItemsets;
+std::vector<items_t> ruleLHS;
+std::vector<items_t> ruleRHS;
+std::vector<int> ruleSupp;
+std::vector<float> ruleConf;
 
-int main() {
-    int minSupport = 10;
-    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/data.txt");
+std::ostream& operator << (std::ostream& out, const items_t& items) {
+    for (auto it = items.begin(); it != items.end(); ++it) {
+        if (it != items.begin()) {
+            out << ",";
+        }
+        out << *it;
+    }
+    return out;
+}
+
+void deriveRuleImpl(std::vector<bool>& bit, int cur, const items_t& items, float minConf) {
+    if (cur == bit.size()) {
+        items_t lhs, rhs;
+        for (int i = 0; i < (int)bit.size(); ++i) {
+            if (bit[i]) {
+                lhs.push_back(items[i]);
+            } else {
+                rhs.push_back(items[i]);
+            }
+        }
+        if (lhs.empty() || lhs.size() == items.size()) {
+            return;
+        }
+        float conf = (float)frequentItemsets[lhs.size()][lhs] / frequentItemsets[rhs.size()][rhs];
+        if (conf >= minConf) {
+//            std::cout << lhs << " -> " << rhs << std::endl;
+            ruleLHS.push_back(std::move(lhs));
+            ruleRHS.push_back(std::move(rhs));
+            ruleSupp.push_back(frequentItemsets[items.size()][items]);
+            ruleConf.push_back(conf);
+        }
+    } else {
+        deriveRuleImpl(bit, cur + 1, items, minConf);
+        bit[cur] = true;
+        deriveRuleImpl(bit, cur + 1, items, minConf);
+        bit[cur] = false;
+    }
+}
+
+void deriveRule(const items_t& items, float minConf) {
+    std::vector<bool> bit(items.size(), false);
+    deriveRuleImpl(bit, 0, items, minConf);
+}
+
+void generateStrongRules(float minConf) {
+    for (int k = 2; k < (int)frequentItemsets.size(); ++k) {
+        for (auto it = frequentItemsets[k].begin(); it != frequentItemsets[k].end(); ++it) {
+            deriveRule(it->first, minConf);
+        }
+    }
+}
+
+void showFrequentItemsets(int nTransactions) {
+    for (int k = 1; k < (int)frequentItemsets.size(); ++k) {
+        for (auto& it : frequentItemsets[k]) {
+            std::cout << it.first << " (" << std::fixed << std::setprecision(2)
+                      << it.second / (float)nTransactions << ")" << std::endl;
+        }
+    }
+}
+
+void showStrongRules(int nTransactions) {
+    for (int i = 0; i < (int)ruleConf.size(); ++i) {
+        std::cout << ruleLHS[i] << " -> " << ruleRHS[i]
+                  << " (" << std::fixed << std::setprecision(2)
+                  << ruleSupp[i] / (float)nTransactions << "," << std::fixed << std::setprecision(2)
+                  << ruleConf[i] << ")" << std::endl;
+    }
+}
+
+int main(int argc, char *argv[]) {
+    std::string filename(argv[1]);
+    float minSuppRatio = std::stof(argv[2]);
+    float minConf = std::stof(argv[3]);
+    char op = 'e';
+    if (argc == 5) {
+        op = argv[4][0];
+    }
+    float minSupp;
+    int nTransactions = 0;
+//    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/data.txt");
 //    std::string filename("/Users/Shangtong/GitHub/DataMining/cmake-build-debug/in.txt");
     feeder.attachFile(filename);
-    auto L = L1(minSupport);
+    frequentItemsets.resize(1);
+    auto L = L1(minSuppRatio, minSupp, nTransactions);
     while (true) {
 //        std::cout << "Freq" << std::endl;
 //        for (auto it = L.begin(); it != L.end(); ++it) {
@@ -290,11 +375,12 @@ int main() {
 //            }
 //            std::cout << "-> " << it->second << std::endl;
 //        }
-        std::cout << L.size() << std::endl;
+//        std::cout << L.size() << std::endl;
         if (L.empty()) {
             break;
         }
         auto C = generateC(L);
+        frequentItemsets.push_back(std::move(L));
 //        std::cout << "Candidate:" << std::endl;
 //        for (auto it = C.begin(); it != C.end(); ++it) {
 //            for (auto& item : it->first) {
@@ -302,8 +388,19 @@ int main() {
 //            }
 //            std::cout << "-> " << it->second << std::endl;
 //        }
-        std::cout << C.size() << std::endl;
-        L = generateL(C, minSupport);
+//        std::cout << C.size() << std::endl;
+        L = generateL(C, minSupp);
+    }
+    generateStrongRules(minConf);
+    if (op == 'r') {
+        showStrongRules(nTransactions);
+    } else if (op == 'f') {
+        showFrequentItemsets(nTransactions);
+    } else if (op == 'a') {
+        showFrequentItemsets(nTransactions);
+        showStrongRules(nTransactions);
+    } else {
+        std::cout << frequentItemsets.size() - 1 << " " << ruleConf.size() << std::endl;
     }
     return 0;
 }
