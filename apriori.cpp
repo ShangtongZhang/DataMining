@@ -305,7 +305,7 @@ void deriveRuleImpl(std::vector<bool>& bit, int cur, const items_t& items, float
         if (lhs.empty() || lhs.size() == items.size()) {
             return;
         }
-        float conf = (float)frequentItemsets[lhs.size()][lhs] / frequentItemsets[rhs.size()][rhs];
+        float conf = (float)frequentItemsets[items.size()][items] / frequentItemsets[lhs.size()][lhs];
         if (conf >= minConf) {
 //            std::cout << lhs << " -> " << rhs << std::endl;
             ruleLHS.push_back(std::move(lhs));
