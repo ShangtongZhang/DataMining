@@ -11,6 +11,7 @@
 #include "mutex"
 #include "atomic"
 #include "thread"
+#include "algorithm"
 
 using items_t = std::vector<int>;
 // how should hash table be slower than rb tree
@@ -391,7 +392,11 @@ int main(int argc, char *argv[]) {
 //        std::cout << C.size() << std::endl;
         L = generateL(C, minSupp);
     }
-    generateStrongRules(minConf);
+//    for (int i = 1; i < (int)frequentItemsets.size(); ++i) {
+//        std::cout << "Number of frequent " << i << "_itemsets:" << frequentItemsets[i].size() << std::endl;
+//    }
+//    generateStrongRules(minConf);
+//    std::cout << "Number of association rules " << ruleConf.size() << std::endl;
     if (op == 'r') {
         showStrongRules(nTransactions);
     } else if (op == 'f') {
