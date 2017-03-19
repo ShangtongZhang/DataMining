@@ -10,16 +10,19 @@ class OpenAITask:
     runs_per_net = 5
     n_cups = 4
 
+    def __init__(self):
+        self.env = self.get_env()
+
     def play(self, net, render=False):
-        state = task.scale_state(env.reset())
+        state = self.scale_state(self.env.reset())
         fitness = 0.0
-        for step in range(task.step_limit):
+        for step in range(self.step_limit):
             if render:
-                env.render()
-            action = task.get_action(net.activate(state))
-            state, reward, done, info = env.step(action)
-            state = task.scale_state(state)
-            fitness += task.get_fitness(reward)
+                self.env.render()
+            action = self.get_action(net.activate(state))
+            state, reward, done, info = self.env.step(action)
+            state = self.scale_state(state)
+            fitness += self.get_fitness(reward)
             if done:
                 break
         return fitness
@@ -31,6 +34,9 @@ class CartPole(OpenAITask):
     step_limit = 600
     angle_limit_radians = 15 * math.pi / 180
     position_limit = 2.4
+
+    def __init__(self):
+        OpenAITask.__init__(self)
 
     def scale_state(self, state):
         return [0.5 * (state[0] + self.position_limit) / self.position_limit,
@@ -51,6 +57,9 @@ class MountainCar(OpenAITask):
     gym_name = 'MountainCar-v0'
     tag = 'mountain-car'
     step_limit = 200
+    
+    def __init__(self):
+        OpenAITask.__init__(self)
 
     def scale_state(self, state):
         return [(state[0] + 1.2) / 1.8,
@@ -66,9 +75,15 @@ class MountainCar(OpenAITask):
         env = gym.make(self.gym_name)
         return env
 
-class SuperMarioEnv:
-    def __init__(self, client):
-        self.client = client
+class SuperMario:
+    runs_per_net = 1
+    n_cpus = 1
+    step_limit = 100000
+    tag = 'super-mario'
+    goal = 3266
+
+    def __init__(self):
+        self.client = nes.Client()
         self.actions = [self.client.msg_press_right,
                         self.client.msg_press_left,
                         self.client.msg_press_up,
@@ -79,26 +94,12 @@ class SuperMarioEnv:
         self.client.reset()
         return self.client.info()
 
-
     def step(self, action):
         self.client.send(self.actions[action])
         info = self.client.info()
         info['dead'] = info['state'] == 11
         info['x'] = info['mario']['x']
         return info
-
-class SuperMario:
-    runs_per_net = 1
-    n_cpus = 1
-    step_limit = 100000
-    tag = 'super-mario'
-    goal = 3266
-
-    def __init__(self):
-        self.client = nes.Client()
-
-    def get_env(self):
-        return SuperMarioEnv(self.client)
 
     def get_action(self, values):
         return np.argmax(values)
@@ -109,28 +110,27 @@ class SuperMario:
     def play(self, net, render=True):
         max_x = -1
         step_counter = 0
-        info = env.reset()
-        state = task.scale_state(info['tiles'])
-        for step in range(task.step_limit):
+        info = self.reset()
+        state = self.scale_state(info['tiles'])
+        for step in range(self.step_limit):
             step_counter += 1
-            action = task.get_action(net.activate(state))
-            info = env.step(action)
+            action = self.get_action(net.activate(state))
+            info = self.step(action)
             if info['x'] > max_x:
                 max_x = info['x']
                 step_counter = 0
             if step_counter > 20:
                 break
-            if max_x >= task.goal:
+            if max_x >= self.goal:
                 break
             if info['dead']:
                 break
-            state = task.scale_state(state)
+            state = self.scale_state(state)
         return max_x
 
 # task = CartPole()
 # task = MountainCar()
 task = SuperMario()
-env = task.get_env()
 
 def eval_genome(genome, config):
     net = neat.nn.FeedForwardNetwork.create(genome, config)
