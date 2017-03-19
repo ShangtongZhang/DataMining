@@ -4,14 +4,33 @@ import os
 import pickle
 import neat
 import numpy as np
+import nes
 
-class CartPole:
+class OpenAITask:
+    runs_per_net = 5
+    n_cups = 4
+
+    def play(self, net, render=False):
+        state = task.scale_state(env.reset())
+        fitness = 0.0
+        for step in range(task.step_limit):
+            if render:
+                env.render()
+            action = task.get_action(net.activate(state))
+            state, reward, done, info = env.step(action)
+            state = task.scale_state(state)
+            fitness += task.get_fitness(reward)
+            if done:
+                break
+        return fitness
+
+
+class CartPole(OpenAITask):
     gym_name = 'CartPole-v0'
     tag = 'cartpole'
     step_limit = 600
     angle_limit_radians = 15 * math.pi / 180
     position_limit = 2.4
-    runs_per_net = 5
 
     def scale_state(self, state):
         return [0.5 * (state[0] + self.position_limit) / self.position_limit,
@@ -28,11 +47,10 @@ class CartPole:
     def get_env(self):
         return gym.make(self.gym_name)
 
-class MountainCar:
+class MountainCar(OpenAITask):
     gym_name = 'MountainCar-v0'
     tag = 'mountain-car'
     step_limit = 200
-    runs_per_net = 5
 
     def scale_state(self, state):
         return [(state[0] + 1.2) / 1.8,
@@ -46,40 +64,85 @@ class MountainCar:
 
     def get_env(self):
         env = gym.make(self.gym_name)
-        # env._max_episode_steps = self.step_limit
         return env
 
+class SuperMarioEnv:
+    def __init__(self, client):
+        self.client = client
+        self.actions = [self.client.msg_press_right,
+                        self.client.msg_press_left,
+                        self.client.msg_press_up,
+                        self.client.msg_press_down,
+                        self.client.msg_press_A]
+
+    def reset(self):
+        self.client.reset()
+        return self.client.info()
+
+
+    def step(self, action):
+        self.client.send(self.actions[action])
+        info = self.client.info()
+        info['dead'] = info['state'] == 11
+        info['x'] = info['mario']['x']
+        return info
+
+class SuperMario:
+    runs_per_net = 1
+    n_cpus = 1
+    step_limit = 100000
+    tag = 'super-mario'
+    goal = 3266
+
+    def __init__(self):
+        self.client = nes.Client()
+
+    def get_env(self):
+        return SuperMarioEnv(self.client)
+
+    def get_action(self, values):
+        return np.argmax(values)
+
+    def scale_state(self, state):
+        return state
+
+    def play(self, net, render=True):
+        max_x = -1
+        step_counter = 0
+        info = env.reset()
+        state = task.scale_state(info['tiles'])
+        for step in range(task.step_limit):
+            step_counter += 1
+            action = task.get_action(net.activate(state))
+            info = env.step(action)
+            if info['x'] > max_x:
+                max_x = info['x']
+                step_counter = 0
+            if step_counter > 20:
+                break
+            if max_x >= task.goal:
+                break
+            if info['dead']:
+                break
+            state = task.scale_state(state)
+        return max_x
+
 # task = CartPole()
-task = MountainCar()
-
+# task = MountainCar()
+task = SuperMario()
 env = task.get_env()
-
-def play(net, render=False):
-    state = task.scale_state(env.reset())
-    fitness = 0.0
-    for step in range(task.step_limit):
-        if render:
-            env.render()
-        action = task.get_action(net.activate(state))
-        state, reward, done, info = env.step(action)
-        state = task.scale_state(state)
-        fitness += task.get_fitness(reward)
-        if done:
-            break
-    return fitness
 
 def eval_genome(genome, config):
     net = neat.nn.FeedForwardNetwork.create(genome, config)
     fitnesses = []
     for runs in range(task.runs_per_net):
-        fitness = play(net)
+        fitness = task.play(net)
         fitnesses.append(fitness)
     return min(fitnesses)
 
 def eval_genomes(genomes, config):
     for genome_id, genome in genomes:
         genome.fitness = eval_genome(genome, config)
-
 
 def run():
     local_dir = os.path.dirname(__file__)
@@ -93,7 +156,7 @@ def run():
     pop.add_reporter(stats)
     pop.add_reporter(neat.StdOutReporter(True))
 
-    pe = neat.ParallelEvaluator(4, eval_genome)
+    pe = neat.ParallelEvaluator(task.n_cpus, eval_genome)
     winner = pop.run(pe.evaluate)
 
     with open('winner-%s.bin' % task.tag, 'wb') as f:
@@ -109,9 +172,10 @@ def show():
                          config_path)
     with open('winner-%s.bin' % task.tag, 'rb') as f:
         winner = pickle.load(f)
+    print(winner)
     net = neat.nn.FeedForwardNetwork.create(winner, config)
-    play(net, True)
+    task.play(net, True)
 
 if __name__ == '__main__':
-    show()
-    # run()
+    # show()
+    run()
