@@ -17,7 +17,7 @@
 
 To make fceux work, please follow the [instructions](https://github.com/zoq/nes) from Marcus Edel.
 
-**Notice that the default built-in version of lua of fceux is 5.1, you can either change the built-in version to your local version or make sure you install lua, luarocks and luasocket for 5.1 version.**
+**Notice that the default built-in version of lua of fceux 2.2.3 is 5.1, you can either change the built-in version to your local version or make sure you install lua, luarocks and luasocket for 5.1 version.**
 
 **Setting include path for new lua users are also tricky, you can set them as following:**
 
