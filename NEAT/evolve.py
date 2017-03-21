@@ -5,6 +5,20 @@ import pickle
 import neat
 import numpy as np
 import nes
+from neat.reporting import *
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+fh = logging.FileHandler('log/%s.txt' % 'supermario')
+fh.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+logger.addHandler(fh)
+logger.addHandler(ch)
 
 class OpenAITask:
     runs_per_net = 5
@@ -114,7 +128,9 @@ class SuperMario:
         state = self.scale_state(info['tiles'])
         for step in range(self.step_limit):
             step_counter += 1
-            action = self.get_action(net.activate(state))
+            values = net.activate(state)
+            # print values
+            action = self.get_action(values)
             info = self.step(action)
             if info['x'] > max_x:
                 max_x = info['x']
@@ -144,6 +160,10 @@ def eval_genomes(genomes, config):
     for genome_id, genome in genomes:
         genome.fitness = eval_genome(genome, config)
 
+class CustomReporter(BaseReporter):
+    def post_evaluate(self, config, population, species, best_genome):
+        logger.debug(best_genome)
+
 def run():
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, 'config-%s.txt' % task.tag)
@@ -155,6 +175,7 @@ def run():
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
     pop.add_reporter(neat.StdOutReporter(True))
+    pop.add_reporter(CustomReporter())
 
     pe = neat.ParallelEvaluator(task.n_cpus, eval_genome)
     winner = pop.run(pe.evaluate)

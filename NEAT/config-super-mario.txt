@@ -6,22 +6,22 @@
 fitness_criterion     = max
 fitness_threshold     = 3266
 pop_size              = 250
-reset_on_extinction   = 0
+reset_on_extinction   = 1
 
 [DefaultGenome]
 num_inputs              = 169
 num_hidden              = 1
 num_outputs             = 5
-initial_connection      = partial 0.5
+initial_connection      = full
 feed_forward            = True
-compatibility_disjoint_coefficient    = 1.0
-compatibility_weight_coefficient      = 0.6
-conn_add_prob           = 0.2
+compatibility_disjoint_coefficient    = 2.0
+compatibility_weight_coefficient      = 0.5
+conn_add_prob           = 0.99
 conn_delete_prob        = 0.2
-node_add_prob           = 0.2
+node_add_prob           = 0.7
 node_delete_prob        = 0.2
-activation_default      = sigmoid
-activation_options      = sigmoid
+activation_default      = relu
+activation_options      = relu
 activation_mutate_rate  = 0.0
 aggregation_default     = sum
 aggregation_options     = sum
@@ -45,7 +45,7 @@ weight_max_value        = 30
 weight_min_value        = -30
 weight_init_mean        = 0.0
 weight_init_stdev       = 1.0
-weight_mutate_rate      = 0.8
+weight_mutate_rate      = 0.2
 weight_replace_rate     = 0.1
 weight_mutate_power     = 0.5
 enabled_default         = True
@@ -56,8 +56,7 @@ compatibility_threshold = 3.0
 
 [DefaultStagnation]
 species_fitness_func = max
-max_stagnation  = 20
-species_elitism = 1
+max_stagnation  = 15
 
 [DefaultReproduction]
 elitism            = 2
