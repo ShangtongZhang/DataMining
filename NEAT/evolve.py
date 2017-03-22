@@ -22,7 +22,7 @@ logger.addHandler(ch)
 
 class OpenAITask:
     runs_per_net = 5
-    n_cups = 4
+    n_cpus = 4
 
     def __init__(self):
         self.env = self.get_env()
@@ -70,7 +70,8 @@ class CartPole(OpenAITask):
 class MountainCar(OpenAITask):
     gym_name = 'MountainCar-v0'
     tag = 'mountain-car'
-    step_limit = 200
+    step_limit = 250
+    runs_per_net = 1
     
     def __init__(self):
         OpenAITask.__init__(self)
@@ -87,6 +88,7 @@ class MountainCar(OpenAITask):
 
     def get_env(self):
         env = gym.make(self.gym_name)
+        env._max_episode_steps = self.step_limit
         return env
 
 class SuperMario:
@@ -119,7 +121,7 @@ class SuperMario:
         return np.argmax(values)
 
     def scale_state(self, state):
-        return state
+        return state + [1.0]
 
     def play(self, net, render=True):
         max_x = -1
@@ -129,7 +131,6 @@ class SuperMario:
         for step in range(self.step_limit):
             step_counter += 1
             values = net.activate(state)
-            # print values
             action = self.get_action(values)
             info = self.step(action)
             if info['x'] > max_x:
@@ -141,7 +142,7 @@ class SuperMario:
                 break
             if info['dead']:
                 break
-            state = self.scale_state(state)
+            state = self.scale_state(info['tiles'])
         return max_x
 
 # task = CartPole()
@@ -175,7 +176,7 @@ def run():
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
     pop.add_reporter(neat.StdOutReporter(True))
-    pop.add_reporter(CustomReporter())
+    # pop.add_reporter(CustomReporter())
 
     pe = neat.ParallelEvaluator(task.n_cpus, eval_genome)
     winner = pop.run(pe.evaluate)
