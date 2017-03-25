@@ -1,14 +1,14 @@
-from operator import mul
-from functools import reduce
+from __future__ import division
 
-from neat.config import ConfigParameter, write_pretty_params
-from neat.genes import DefaultConnectionGene, DefaultNodeGene
-from neat.six_util import iteritems, iterkeys
+from functools import reduce
+from operator import mul
+from random import choice, random, shuffle
 
 from neat.activations import ActivationFunctionSet
+from neat.config import ConfigParameter, write_pretty_params
+from neat.genes import DefaultConnectionGene, DefaultNodeGene
 from neat.graphs import creates_cycle
-
-from random import choice, random, shuffle
+from neat.six_util import iteritems, iterkeys
 
 
 def product(x):
@@ -251,6 +251,12 @@ class DefaultGenome(object):
         # Don't duplicate connections.
         key = (in_node, out_node)
         if key in self.connections:
+            return
+
+        if in_node in config.output_keys:
+            return
+
+        if out_node in config.input_keys:
             return
 
         # For feed-forward networks, avoid creating cycles.
