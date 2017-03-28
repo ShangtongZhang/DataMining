@@ -8,26 +8,16 @@ import nes
 from neat.reporting import *
 import logging
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-fh = logging.FileHandler('log/%s.txt' % 'supermario')
-fh.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-fh.setFormatter(formatter)
-ch.setFormatter(formatter)
-logger.addHandler(fh)
-logger.addHandler(ch)
-
 class OpenAITask:
-    runs_per_net = 5
-    n_cpus = 4
+    runs_per_net = 1
+    test_repeat = 10
+    success_threshold = None
+    n_cpus = 8
 
     def __init__(self):
         self.env = self.get_env()
 
-    def play(self, net, render=False):
+    def play(self, net, render=False, test=True):
         state = self.scale_state(self.env.reset())
         fitness = 0.0
         for step in range(self.step_limit):
@@ -39,8 +29,20 @@ class OpenAITask:
             fitness += self.get_fitness(reward)
             if done:
                 break
-        return fitness
-
+        if test:
+            fitnesses = np.zeros(self.test_repeat)
+            for i in range(self.test_repeat):
+                fitnesses[i] = self.play(net, False, False)
+            mean_fitness = np.mean(fitnesses)
+            if mean_fitness >= self.success_threshold:
+                return mean_fitness
+            else:
+                if fitness >= self.success_threshold:
+                    return self.success_threshold - 1
+                else:
+                    return fitness
+        else:
+            return fitness
 
 class CartPole(OpenAITask):
     gym_name = 'CartPole-v0'
@@ -71,8 +73,9 @@ class MountainCar(OpenAITask):
     gym_name = 'MountainCar-v0'
     tag = 'mountain-car'
     step_limit = 250
-    runs_per_net = 1
-    
+    test_repeat = 10
+    success_threshold = -110
+
     def __init__(self):
         OpenAITask.__init__(self)
 
@@ -146,8 +149,20 @@ class SuperMario:
         return max_x
 
 # task = CartPole()
-# task = MountainCar()
-task = SuperMario()
+task = MountainCar()
+# task = SuperMario()
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+fh = logging.FileHandler('log/%s.txt' % task.tag)
+fh.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+logger.addHandler(fh)
+logger.addHandler(ch)
 
 def eval_genome(genome, config):
     net = neat.nn.FeedForwardNetwork.create(genome, config)
@@ -162,8 +177,25 @@ def eval_genomes(genomes, config):
         genome.fitness = eval_genome(genome, config)
 
 class CustomReporter(BaseReporter):
-    def post_evaluate(self, config, population, species, best_genome):
-        logger.debug(best_genome)
+    def found_solution(self, config, generation, best):
+        self.generation = generation
+
+
+def evolve(config, pop_size, step_limit):
+    config.pop_size = pop_size
+    task.step_limit = step_limit
+
+    pop = neat.Population(config)
+    stats = neat.StatisticsReporter()
+    pop.add_reporter(stats)
+    pop.add_reporter(neat.StdOutReporter(True))
+    reporter = CustomReporter()
+    pop.add_reporter(reporter)
+
+    pe = neat.ParallelEvaluator(task.n_cpus, eval_genome)
+    winner = pop.run(pe.evaluate)
+
+    return winner, reporter.generation
 
 def run():
     local_dir = os.path.dirname(__file__)
@@ -172,19 +204,26 @@ def run():
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
 
-    pop = neat.Population(config)
-    stats = neat.StatisticsReporter()
-    pop.add_reporter(stats)
-    pop.add_reporter(neat.StdOutReporter(True))
-    # pop.add_reporter(CustomReporter())
+    pop_sizes = [250, 200, 150]
+    step_limits = [250, 200, 150]
+    runs = 30
+    results = dict()
+    for pop_size in pop_sizes:
+        for step_limit in step_limits:
+            success_generation = np.zeros(runs)
+            for r in range(runs):
+                logger.debug('pop size: %d, step limit: %d, run: %d' % (pop_size, step_limit, r))
+                winner, success_generation[r] = evolve(config, pop_size, step_limit)
+            results[(pop_size, step_limit)] = (success_generation, winner)
+            with open('statistics-%s.bin' % task.tag, 'wb') as f:
+                pickle.dump(results, f)
 
-    pe = neat.ParallelEvaluator(task.n_cpus, eval_genome)
-    winner = pop.run(pe.evaluate)
+    # winner = evolve(config, 250, 250)
 
     with open('winner-%s.bin' % task.tag, 'wb') as f:
         pickle.dump(winner, f)
 
-    print(winner)
+    # print(winner)
 
 def show():
     local_dir = os.path.dirname(__file__)
@@ -192,11 +231,17 @@ def show():
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
-    with open('winner-%s.bin' % task.tag, 'rb') as f:
-        winner = pickle.load(f)
-    print(winner)
-    net = neat.nn.FeedForwardNetwork.create(winner, config)
-    task.play(net, True)
+
+    with open('statistics-%s.bin' % task.tag, 'rb') as f:
+        results = pickle.load(f)
+    # print results
+
+    # winner = results[(250, 250)][1]
+    # with open('winner-%s.bin' % task.tag, 'rb') as f:
+    #     winner = pickle.load(f)
+    # print(winner)
+    # net = neat.nn.FeedForwardNetwork.create(winner, config)
+    # print task.play(net, True)
 
 if __name__ == '__main__':
     # show()
