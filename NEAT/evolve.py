@@ -9,7 +9,6 @@ from neat.reporting import *
 import logging
 
 class OpenAITask:
-    runs_per_net = 1
     n_cpus = 8
 
     def __init__(self):
@@ -18,11 +17,13 @@ class OpenAITask:
     def play(self, net, render=False, test=True):
         state = self.scale_state(self.env.reset())
         fitness = 0.0
+        steps = 0
         for step in range(self.step_limit):
             if render:
                 self.env.render()
             action = self.get_action(net.activate(state))
             state, reward, done, info = self.env.step(action)
+            steps += 1
             state = self.scale_state(state)
             fitness += self.get_fitness(reward)
             if done:
@@ -30,17 +31,17 @@ class OpenAITask:
         if test:
             fitnesses = np.zeros(self.test_repeat)
             for i in range(self.test_repeat):
-                fitnesses[i] = self.play(net, False, False)
+                fitnesses[i], _ = self.play(net, False, False)
             mean_fitness = np.mean(fitnesses)
             if mean_fitness >= self.success_threshold:
-                return mean_fitness
+                return mean_fitness, steps
             else:
                 if fitness >= self.success_threshold:
-                    return self.success_threshold - 1
+                    return self.success_threshold - 1, steps
                 else:
-                    return fitness
+                    return fitness, steps
         else:
-            return fitness
+            return fitness, steps
 
     def load_config(self):
         local_dir = os.path.dirname(__file__)
@@ -299,12 +300,11 @@ class Pendulum(OpenAITask):
         while True:
             self.show(winner)
 
-class SuperMario:
-    runs_per_net = 1
+class SuperMario(OpenAITask):
     n_cpus = 1
     step_limit = 100000
     tag = 'super-mario'
-    goal = 3266
+    success_threshold = 3000
 
     def __init__(self):
         self.client = nes.Client()
@@ -331,7 +331,7 @@ class SuperMario:
     def scale_state(self, state):
         return state + [1.0]
 
-    def play(self, net, render=True):
+    def play(self, net, render=True, test=False):
         max_x = -1
         step_counter = 0
         info = self.reset()
@@ -346,12 +346,21 @@ class SuperMario:
                 step_counter = 0
             if step_counter > 20:
                 break
-            if max_x >= self.goal:
+            if max_x >= self.success_threshold:
                 break
             if info['dead']:
                 break
             state = self.scale_state(info['tiles'])
         return max_x
+
+    def set_step_limit(self, step_limit):
+        return
+
+    def run(self):
+        config = self.load_config()
+        winner, _, _ = evolve(config, 250, -1)
+        with open('winner-%s.bin' % self.tag, 'wb') as f:
+            pickle.dump(winner, f)
 
 # task = CartPole()
 # task = MountainCar()
@@ -373,26 +382,34 @@ logger.addHandler(ch)
 
 def eval_genome(genome, config):
     net = neat.nn.FeedForwardNetwork.create(genome, config)
-    fitnesses = []
-    for runs in range(task.runs_per_net):
-        fitness = task.play(net)
-        fitnesses.append(fitness)
-    return min(fitnesses)
-
-def eval_genomes(genomes, config):
-    for genome_id, genome in genomes:
-        genome.fitness = eval_genome(genome, config)
+    fitness, steps = task.play(net)
+    return (fitness, steps)
 
 class CustomReporter(BaseReporter):
     def __init__(self):
-        self.all_fitnesses = []
+        self.all_steps = []
 
     def found_solution(self, config, generation, best):
         self.generation = generation
 
     def post_evaluate(self, config, population, species, best_genome):
-        fitnesses = [c.fitness for c in itervalues(population)]
-        self.all_fitnesses.append(fitnesses)
+        steps = [c.steps for c in itervalues(population)]
+        self.all_steps.append(steps)
+
+class SingleEvaluator(object):
+    def __init__(self, num_workers, eval_function, timeout=None):
+        '''
+        eval_function should take one argument (a genome object) and return
+        a single float (the genome's fitness).
+        '''
+        self.num_workers = num_workers
+        self.eval_function = eval_function
+        self.timeout = timeout
+
+    def evaluate(self, genomes, config):
+        jobs = []
+        for genome_id, genome in genomes:
+            jobs.append(self.eval_function(genome, config))
 
 def evolve(config, pop_size, step_limit):
     config.pop_size = pop_size
@@ -408,9 +425,9 @@ def evolve(config, pop_size, step_limit):
     pe = neat.ParallelEvaluator(task.n_cpus, eval_genome)
     winner = pop.run(pe.evaluate)
 
-    return winner, reporter.generation, reporter.all_fitnesses
+    return winner, reporter.generation, reporter.all_steps
 
 if __name__ == '__main__':
-    # task.run()
-    task.draw()
+    task.run()
+    # task.draw()
     # task.show()
