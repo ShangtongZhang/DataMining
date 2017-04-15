@@ -263,7 +263,7 @@ class MountainCarCTS(OpenAITask):
                     pop_size, step_limit,
                     np.mean(success_generation),
                     np.std(success_generation) / np.sqrt(runs),
-                    -np.mean(success_fitness),
+                    np.mean(success_fitness),
                     np.std(success_fitness) / np.sqrt(runs)
                 )
 
@@ -364,9 +364,9 @@ class SuperMario(OpenAITask):
 
 # task = CartPole()
 # task = MountainCar()
-task = MountainCarCTS()
+# task = MountainCarCTS()
 # task = Pendulum()
-# task = SuperMario()
+task = SuperMario()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -428,6 +428,6 @@ def evolve(config, pop_size, step_limit):
     return winner, reporter.generation, reporter.all_steps
 
 if __name__ == '__main__':
-    task.run()
-    # task.draw()
+    # task.run()
+    task.draw()
     # task.show()
