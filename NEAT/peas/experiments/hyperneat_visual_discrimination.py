@@ -7,6 +7,7 @@ from itertools import product
 
 sys.path.append(os.path.join(os.path.split(__file__)[0],'..','..')) 
 from peas.methods.neat import NEATPopulation, NEATGenotype
+from peas.methods.aggregated import AggregatedGenotype, AggregatedHyperNEATDeveloper
 from peas.methods.hyperneat import HyperNEATDeveloper, Substrate
 from peas.methods.reaction import ReactionDeveloper
 from peas.methods.evolution import SimplePopulation
@@ -30,7 +31,7 @@ def evaluate(individual, task, developer):
 def solve(individual, task, developer):
     return task.solve(developer.convert(individual))
 
-def run(method, setup, generations=250, popsize=100):
+def run(method, setup, generations=250, popsize=3):
     # Create task and genotype->phenotype converter
     size = 11
     task_kwds = dict(size=size)
@@ -70,10 +71,10 @@ def run(method, setup, generations=250, popsize=100):
         elif method == '1hnmax':
             geno_kwds['max_nodes'] = 8
     
-        geno = lambda: NEATGenotype(**geno_kwds)
+        geno = lambda: AggregatedGenotype(lambda: [NEATGenotype(**geno_kwds)])
         pop = NEATPopulation(geno, popsize=popsize, target_species=8)
     	
-        developer = HyperNEATDeveloper(substrate=substrate, 
+        developer = AggregatedHyperNEATDeveloper(substrate=substrate,
                                        sandwich=True, 
                                        add_deltas=True,
                                        node_type='tanh')

@@ -421,6 +421,7 @@ class NEATPopulation(SimplePopulation):
                  old_multiplier=0.2,
                  reset_innovations=False,
                  survival=0.2,
+                 n_components=1,
                  **kwargs):
         """ Initializes the object with settings,
             does not create a population yet.
@@ -442,6 +443,7 @@ class NEATPopulation(SimplePopulation):
         self.old_multiplier = old_multiplier
         self.stagnation_age = stagnation_age
         self.min_elitism_size = min_elitism_size
+        self.n_components = n_components
 
 
     def _reset(self):
@@ -455,8 +457,10 @@ class NEATPopulation(SimplePopulation):
         
         # Neat specific:
         self.species = [] # List of species
-        self.global_innov = 0
-        self.innovations = {} # Keep track of global innovations
+        # self.global_innov = 0
+        # self.innovations = {} # Keep track of global innovations
+        self.global_innov = [0] * self.n_components
+        self.innovations = [{} for _ in range(self.n_components)]
         self.current_compatibility_threshold = self.compatibility_threshold
                 
     @property
@@ -551,7 +555,8 @@ class NEATPopulation(SimplePopulation):
         # neat-python keeps a global list.
         # This switch controls which behavior to simulate.
         if self.reset_innovations:
-            self.innovations = dict()
+            # self.innovations = dict()
+            self.innovations = [{} for _ in range(self.n_components)]
         for specie in self.species:
             # First we keep only the best individuals of each species
             specie.members.sort(key=lambda ind: ind.stats['fitness'], reverse=True)
@@ -575,7 +580,10 @@ class NEATPopulation(SimplePopulation):
                 specie.members.append(child)
         
         if self.innovations:
-            self.global_innov = max(self.innovations.itervalues())            
+            for i in range(self.n_components):
+                if self.innovations[i]:
+                    self.global_innov[i] = max(self.innovations[i].itervalues())
+            # self.global_innov = max(self.innovations.itervalues())
         
         self._gather_stats(pop)
         
