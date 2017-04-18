@@ -11,6 +11,7 @@ import logging
 
 class OpenAITask:
     n_cpus = 6
+    step_limits = [10000]
     def __init__(self):
         self.env = self.get_env()
 
@@ -18,7 +19,6 @@ class OpenAITask:
         state = self.scale_state(self.env.reset())
         fitness = 0.0
         steps = 0
-        fitness_stagation = 0
         for step in range(self.step_limit):
             if render:
                 self.env.render()
@@ -27,12 +27,6 @@ class OpenAITask:
             steps += 1
             state = self.scale_state(state)
             fitness_inc = self.get_fitness(reward)
-            if fitness_inc != 0:
-                fitness_stagation = 0
-            else:
-                fitness_stagation += 1
-            if fitness_stagation > 300:
-                break
             fitness += fitness_inc
             if done:
                 break
@@ -41,6 +35,7 @@ class OpenAITask:
             for i in range(self.test_repeat):
                 fitnesses[i], _ = self.play(net, False, False)
             mean_fitness = np.mean(fitnesses)
+            return mean_fitness, steps
             if mean_fitness >= self.success_threshold:
                 return mean_fitness, steps
             else:
@@ -60,13 +55,67 @@ class OpenAITask:
         config.fitness_threshold = self.success_threshold
         return config
 
+    def run(self):
+        config = self.load_config()
+        results = dict()
+        for pop_size in self.pop_sizes:
+            for step_limit in self.step_limits:
+                success_generation = np.zeros(self.runs)
+                fitness_info = []
+                for r in range(self.runs):
+                    logger.debug('pop size: %d, step limit: %d, run: %d' % (pop_size, step_limit, r))
+                    winner, success_generation[r], all_fitnesses = self.evolve(config, pop_size, step_limit)
+                    fitness_info.append(all_fitnesses)
+                results[(pop_size, step_limit)] = (success_generation, fitness_info, winner)
+                with open('statistics-%s.bin' % self.tag, 'wb') as f:
+                    pickle.dump(results, f)
+
+    def draw(self):
+        with open('statistics-%s.bin' % self.tag, 'rb') as f:
+            results = pickle.load(f)
+        for pop_size in self.pop_sizes:
+            for step_limit in self.step_limits:
+                success_generation, all_steps, winner = results[(pop_size, step_limit)]
+                success_generation += 1
+                success_fitness = np.zeros(self.runs)
+                for run, steps in enumerate(all_steps):
+                    for generation_steps in steps:
+                        success_fitness[run] += np.sum(np.array(generation_steps))
+                print 'pop size: %d, step limit: %d, avg generation: %f(%f), avg steps %f(%f)' % (
+                    pop_size, step_limit,
+                    np.mean(success_generation),
+                    np.std(success_generation) / np.sqrt(self.runs),
+                    np.mean(success_fitness),
+                    np.std(success_fitness) / np.sqrt(self.runs)
+                )
+        with open('winner-%s.bin' % self.tag, 'wb') as f:
+            pickle.dump(winner, f)
+
     def show(self, winner=None):
         config = self.load_config()
+        self.set_step_limit(10000)
         if winner is None:
             with open('winner-%s.bin' % self.tag, 'rb') as f:
                 winner = pickle.load(f)
         net = neat.nn.FeedForwardNetwork.create(winner, config)
         print OpenAITask.play(self, net, True, False)
+
+    def evolve(self, config, pop_size, step_limit):
+        config.pop_size = pop_size
+        self.set_step_limit(step_limit)
+
+        pop = neat.Population(config)
+        stats = neat.StatisticsReporter()
+        pop.add_reporter(stats)
+        pop.add_reporter(neat.StdOutReporter(True))
+        reporter = CustomReporter()
+        pop.add_reporter(reporter)
+
+        # pe = SingleEvaluator(self.n_cpus, eval_genome)
+        pe = neat.ParallelEvaluator(self.n_cpus, eval_genome)
+        winner = pop.run(pe.evaluate)
+
+        return winner, reporter.generation, reporter.all_steps
 
 class CartPole(OpenAITask):
     gym_name = 'CartPole-v0'
@@ -448,12 +497,39 @@ class Breakout(OpenAITask):
         with open('winner-%s.bin' % self.tag, 'wb') as f:
             pickle.dump(winner, f)
 
+class LunarLander(OpenAITask):
+    gym_name = 'LunarLander-v2'
+    tag = 'lunar-lander'
+    test_repeat = 10
+    runs = 1
+    success_threshold = 200
+    pop_sizes = [300]
+
+    def __init__(self):
+        OpenAITask.__init__(self)
+
+    def scale_state(self, state):
+        return state
+
+    def get_action(self, value):
+        return np.argmax(value)
+
+    def get_fitness(self, reward):
+        return reward
+
+    def get_env(self):
+        env = gym.make(self.gym_name)
+        return env
+
+    def set_step_limit(self, step_limit):
+        self.step_limit = step_limit
+
 # task = CartPole()
 # task = MountainCar()
 # task = MountainCarCTS()
 # task = Pendulum()
 # task = SuperMario()
-task = Breakout()
+task = LunarLander()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -498,23 +574,8 @@ class SingleEvaluator(object):
         for genome_id, genome in genomes:
             jobs.append(self.eval_function(genome, config))
 
-def evolve(config, pop_size, step_limit):
-    config.pop_size = pop_size
-    task.set_step_limit(step_limit)
-
-    pop = neat.Population(config)
-    stats = neat.StatisticsReporter()
-    pop.add_reporter(stats)
-    pop.add_reporter(neat.StdOutReporter(True))
-    reporter = CustomReporter()
-    pop.add_reporter(reporter)
-
-    pe = neat.ParallelEvaluator(task.n_cpus, eval_genome)
-    winner = pop.run(pe.evaluate)
-
-    return winner, reporter.generation, reporter.all_steps
-
 if __name__ == '__main__':
-    task.run()
+    # task.run()
     # task.draw()
-    # task.show()
+    while True:
+        task.show()
