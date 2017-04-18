@@ -10,8 +10,9 @@ from neat.reporting import *
 import logging
 
 class OpenAITask:
-    n_cpus = 6
+    n_cpus = 10
     step_limits = [10000]
+    runs_per_net = 1
     def __init__(self):
         self.env = self.get_env()
 
@@ -30,7 +31,7 @@ class OpenAITask:
             fitness += fitness_inc
             if done:
                 break
-        if test:
+        if test and self.test_repeat:
             fitnesses = np.zeros(self.test_repeat)
             for i in range(self.test_repeat):
                 fitnesses[i], _ = self.play(net, False, False)
@@ -120,11 +121,12 @@ class OpenAITask:
 class CartPole(OpenAITask):
     gym_name = 'CartPole-v0'
     tag = 'cartpole'
-    step_limit = 200
     test_repeat = 50
     success_threshold = 195
     angle_limit_radians = 15 * math.pi / 180
     position_limit = 2.4
+    pop_sizes = [300, 250, 200, 150, 100]
+    step_limits = [200]
 
     def __init__(self):
         OpenAITask.__init__(self)
@@ -147,51 +149,14 @@ class CartPole(OpenAITask):
     def set_step_limit(self, step_limit):
         return
 
-    def run(self):
-        config = self.load_config()
-        pop_sizes = [300, 250, 200, 150, 100]
-        step_limit = 200
-        runs = 30
-        results = dict()
-        for pop_size in pop_sizes:
-            success_generation = np.zeros(runs)
-            fitness_info = []
-            for r in range(runs):
-                logger.debug('pop size: %d, step limit: %d, run: %d' % (pop_size, step_limit, r))
-                winner, success_generation[r], all_fitnesses = evolve(config, pop_size, step_limit)
-                fitness_info.append(all_fitnesses)
-            results[(pop_size, step_limit)] = (success_generation, fitness_info, winner)
-            with open('statistics-%s.bin' % self.tag, 'wb') as f:
-                pickle.dump(results, f)
-
-    def draw(self):
-        with open('statistics-%s.bin' % self.tag, 'rb') as f:
-            results = pickle.load(f)
-        pop_sizes = [300, 250, 200, 150, 100]
-        step_limits = [200]
-        runs = 30
-        for pop_size in pop_sizes:
-            for step_limit in step_limits:
-                success_generation, all_fitnesses, _ = results[(pop_size, step_limit)]
-                success_generation += 1
-                success_fitness = np.zeros(runs)
-                for run, fitnesses in enumerate(all_fitnesses):
-                    for generation_fitness in fitnesses:
-                        success_fitness[run] += np.sum(np.array(generation_fitness))
-                print 'pop size: %d, avg generation: %f(%f), avg steps %f(%f)' % (
-                    pop_size,
-                    np.mean(success_generation),
-                    np.std(success_generation) / np.sqrt(runs),
-                    np.mean(success_fitness),
-                    np.std(success_fitness) / np.sqrt(runs)
-                )
-
 class MountainCar(OpenAITask):
     gym_name = 'MountainCar-v0'
     tag = 'mountain-car'
     step_limit = 250
     test_repeat = 10
     success_threshold = -110
+    pop_sizes = [300, 250, 200, 150]
+    step_limits = [300, 250, 200, 150]
 
     def __init__(self):
         OpenAITask.__init__(self)
@@ -215,52 +180,14 @@ class MountainCar(OpenAITask):
         self.step_limit = step_limit
         self.env._max_episode_steps = step_limit
 
-    def run(self):
-        config = self.load_config()
-        pop_sizes = [300, 250, 200, 150]
-        step_limits = [300, 250, 200, 150]
-        runs = 30
-        results = dict()
-        for pop_size in pop_sizes:
-            for step_limit in step_limits:
-                success_generation = np.zeros(runs)
-                fitness_info = []
-                for r in range(runs):
-                    logger.debug('pop size: %d, step limit: %d, run: %d' % (pop_size, step_limit, r))
-                    winner, success_generation[r], all_fitnesses = evolve(config, pop_size, step_limit)
-                    fitness_info.append(all_fitnesses)
-                results[(pop_size, step_limit)] = (success_generation, fitness_info, winner)
-                with open('statistics-%s.bin' % self.tag, 'wb') as f:
-                    pickle.dump(results, f)
-
-    def draw(self):
-        with open('statistics-%s.bin' % self.tag, 'rb') as f:
-            results = pickle.load(f)
-        pop_sizes = [300, 250, 200, 150]
-        step_limits = [300, 250, 200, 150]
-        runs = 30
-        for pop_size in pop_sizes:
-            for step_limit in step_limits:
-                success_generation, all_fitnesses, _ = results[(pop_size, step_limit)]
-                success_generation += 1
-                success_fitness = np.zeros(runs)
-                for run, fitnesses in enumerate(all_fitnesses):
-                    for generation_fitness in fitnesses:
-                        success_fitness[run] += np.sum(np.array(generation_fitness))
-                print 'pop size: %d, step limit: %d, avg generation: %f(%f), avg steps %f(%f)' % (
-                    pop_size, step_limit,
-                    np.mean(success_generation),
-                    np.std(success_generation) / np.sqrt(runs),
-                    -np.mean(success_fitness),
-                    np.std(success_fitness) / np.sqrt(runs)
-                )
-
 class MountainCarCTS(OpenAITask):
     gym_name = 'MountainCarContinuous-v0'
     tag = 'mountain-car-cts'
     step_limit = 250
     test_repeat = 10
     success_threshold = 90
+    pop_sizes = [300, 250, 200, 150]
+    step_limits = [300, 250, 200, 150]
 
     def __init__(self):
         OpenAITask.__init__(self)
@@ -283,46 +210,6 @@ class MountainCarCTS(OpenAITask):
     def set_step_limit(self, step_limit):
         self.step_limit = step_limit
         self.env._max_episode_steps = step_limit
-
-    def run(self):
-        config = self.load_config()
-        pop_sizes = [300, 250, 200, 150]
-        step_limits = [300, 250, 200, 150]
-        runs = 30
-        results = dict()
-        for pop_size in pop_sizes:
-            for step_limit in step_limits:
-                success_generation = np.zeros(runs)
-                fitness_info = []
-                for r in range(runs):
-                    logger.debug('pop size: %d, step limit: %d, run: %d' % (pop_size, step_limit, r))
-                    winner, success_generation[r], all_fitnesses = evolve(config, pop_size, step_limit)
-                    fitness_info.append(all_fitnesses)
-                results[(pop_size, step_limit)] = (success_generation, fitness_info, winner)
-                with open('statistics-%s.bin' % self.tag, 'wb') as f:
-                    pickle.dump(results, f)
-
-    def draw(self):
-        with open('statistics-%s.bin' % self.tag, 'rb') as f:
-            results = pickle.load(f)
-        pop_sizes = [300, 250, 200, 150]
-        step_limits = [300, 250, 200, 150]
-        runs = 30
-        for pop_size in pop_sizes:
-            for step_limit in step_limits:
-                success_generation, all_fitnesses, _ = results[(pop_size, step_limit)]
-                success_generation += 1
-                success_fitness = np.zeros(runs)
-                for run, fitnesses in enumerate(all_fitnesses):
-                    for generation_fitness in fitnesses:
-                        success_fitness[run] += np.sum(np.array(generation_fitness))
-                print 'pop size: %d, step limit: %d, avg generation: %f(%f), avg steps %f(%f)' % (
-                    pop_size, step_limit,
-                    np.mean(success_generation),
-                    np.std(success_generation) / np.sqrt(runs),
-                    np.mean(success_fitness),
-                    np.std(success_fitness) / np.sqrt(runs)
-                )
 
 class Pendulum(OpenAITask):
     gym_name = 'Pendulum-v0'
@@ -350,12 +237,6 @@ class Pendulum(OpenAITask):
 
     def set_step_limit(self, step_limit):
         return
-
-    def run(self):
-        config = self.load_config()
-        winner, _, all_fitnesses = evolve(config, 400, 200)
-        while True:
-            self.show(winner)
 
 class SuperMario(OpenAITask):
     n_cpus = 1
@@ -415,7 +296,7 @@ class SuperMario(OpenAITask):
 
     def run(self):
         config = self.load_config()
-        winner, _, _ = evolve(config, 250, -1)
+        winner, _, _ = self.evolve(config, 250, -1)
         with open('winner-%s.bin' % self.tag, 'wb') as f:
             pickle.dump(winner, f)
 
@@ -428,6 +309,8 @@ class Breakout(OpenAITask):
     width = 21
     height = 16
     downsample_factor = 10
+    pop_sizes = [300]
+    step_limits = [step_limit]
 
     def __init__(self):
         OpenAITask.__init__(self)
@@ -456,54 +339,13 @@ class Breakout(OpenAITask):
         self.step_limit = step_limit
         return
 
-    def run(self):
-        config = self.load_config()
-        pop_sizes = [300]
-        step_limit = self.step_limit
-        runs = 1
-        results = dict()
-        for pop_size in pop_sizes:
-            success_generation = np.zeros(runs)
-            fitness_info = []
-            for r in range(runs):
-                logger.debug('pop size: %d, step limit: %d, run: %d' % (pop_size, step_limit, r))
-                winner, success_generation[r], all_fitnesses = evolve(config, pop_size, step_limit)
-                fitness_info.append(all_fitnesses)
-            results[(pop_size, step_limit)] = (success_generation, fitness_info, winner)
-            with open('statistics-%s.bin' % self.tag, 'wb') as f:
-                pickle.dump(results, f)
-
-    def draw(self):
-        with open('statistics-%s.bin' % self.tag, 'rb') as f:
-            results = pickle.load(f)
-        pop_sizes = [300]
-        step_limits = [200]
-        runs = 30
-        for pop_size in pop_sizes:
-            for step_limit in step_limits:
-                success_generation, all_fitnesses, winner = results[(pop_size, step_limit)]
-                success_generation += 1
-                success_fitness = np.zeros(runs)
-                for run, fitnesses in enumerate(all_fitnesses):
-                    for generation_fitness in fitnesses:
-                        success_fitness[run] += np.sum(np.array(generation_fitness))
-                print 'pop size: %d, step limit: %d, avg generation: %f(%f), avg steps %f(%f)' % (
-                    pop_size, step_limit,
-                    np.mean(success_generation),
-                    np.std(success_generation) / np.sqrt(runs),
-                    np.mean(success_fitness),
-                    np.std(success_fitness) / np.sqrt(runs)
-                )
-        with open('winner-%s.bin' % self.tag, 'wb') as f:
-            pickle.dump(winner, f)
-
 class LunarLander(OpenAITask):
     gym_name = 'LunarLander-v2'
     tag = 'lunar-lander'
-    test_repeat = 10
-    runs = 1
+    test_repeat = 0
+    runs = 30
     success_threshold = 200
-    pop_sizes = [300]
+    pop_sizes = [300, 250, 200]
 
     def __init__(self):
         OpenAITask.__init__(self)
@@ -545,8 +387,11 @@ logger.addHandler(ch)
 
 def eval_genome(genome, config):
     net = neat.nn.FeedForwardNetwork.create(genome, config)
-    fitness, steps = task.play(net)
-    return (fitness, steps)
+    fitness = np.zeros(task.runs_per_net)
+    steps = np.zeros(fitness.shape)
+    for run in range(task.runs_per_net):
+        fitness[run], steps[run] = task.play(net)
+    return (np.mean(fitness), np.sum(steps))
 
 class CustomReporter(BaseReporter):
     def __init__(self):
@@ -575,7 +420,7 @@ class SingleEvaluator(object):
             jobs.append(self.eval_function(genome, config))
 
 if __name__ == '__main__':
-    # task.run()
+    task.run()
     # task.draw()
-    while True:
-        task.show()
+    # while True:
+    #     task.show()
