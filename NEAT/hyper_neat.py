@@ -5,6 +5,7 @@ from itertools import product
 from peas.methods.hyperneat import Substrate
 from peas.methods.aggregated import AggregatedGenotype, AggregatedHyperNEATDeveloper
 from peas.methods.neat import NEATPopulation, NEATGenotype
+from peas.methods.hyperneat import HyperNEATDeveloper
 
 class OpenAITask:
     def __init__(self):
@@ -43,9 +44,11 @@ class OpenAITask:
         return new_state.flatten()
 
     def get_action(self, output):
-        output_units_begin = self.width * self.height + 1
+        output_units_begin = self.width * self.height
         output_units_end = output_units_begin + self.action_space()
         output = output[output_units_begin: output_units_end]
+        # output = output[output_units_begin: output_units_end].reshape((2, self.action_space()))
+        # output = np.mean(output, axis=0)
         return np.argmax(output)
 
     def state_shape(self):
@@ -63,33 +66,48 @@ def evaluate(individual, task, developer):
 def solve(individual, task, developer):
     return individual.stats['fitness'] > 10
 
-def run(generations=250, popsize=200):
+def run(generations=250, popsize=3):
     input_shape = task.state_shape()
     substrate = Substrate()
-    substrate.add_nodes(input_shape, 'l')
-    substrate.add_connections('l', 'l')
+    substrate.add_nodes(input_shape, 'i')
+    substrate.add_nodes(input_shape, 'h')
+    # substrate.add_nodes((task.action_space(), ), 'o')
+    substrate.add_nodes((2, 3), 'o')
+    substrate.add_connections('i', 'h')
+    substrate.add_connections('h', 'o')
+    # substrate.add_connections('i', 'o')
 
     cppn_geno_kwds = dict(feedforward=True,
-                     inputs=6,
+                     inputs=4,
                      weight_range=(-3.0, 3.0),
                      prob_add_conn=0.1,
                      prob_add_node=0.03,
                      bias_as_node=False,
-                     types=['sin', 'bound', 'linear', 'gauss', 'sigmoid'])
+                     types=['linear', 'sin', 'bound', 'gauss', 'tanh'])
 
-    output_geno_kwds = dict(feedforward=True,
-                            inputs=input_shape[0] * input_shape[1],
-                            outputs=task.action_space(),
-                            )
+    # output_geno_kwds = dict(feedforward=True,
+    #                         inputs=input_shape[0] * input_shape[1],
+    #                         outputs=task.action_space(),
+    #                         )
 
-    geno = lambda: AggregatedGenotype(
-        lambda: [NEATGenotype(**cppn_geno_kwds),
-                 NEATGenotype(**output_geno_kwds)])
-    pop = NEATPopulation(geno, popsize=popsize, n_components=2, max_cores=6)
-    developer = AggregatedHyperNEATDeveloper(substrate=substrate,
-                                             sandwich=True,
-                                             add_deltas=True,
-                                             node_type='tanh')
+    # cppn_geno_kwds2 = dict(feedforward=True,
+    #                  inputs=4,
+    #                  weight_range=(-3.0, 3.0),
+    #                  prob_add_conn=0.1,
+    #                  prob_add_node=0.03,
+    #                  bias_as_node=False,
+    #                  types=['linear', 'sin', 'bound', 'gauss', 'tanh'])
+
+    geno = lambda: NEATGenotype(**cppn_geno_kwds)
+    # geno = lambda: AggregatedGenotype(
+    #     lambda: [NEATGenotype(**cppn_geno_kwds1),
+    #              NEATGenotype(**cppn_geno_kwds2)])
+    pop = NEATPopulation(geno, popsize=popsize, n_components=1, max_cores=1)
+    # developer = AggregatedHyperNEATDeveloper(substrates=substrates,
+    #                                          sandwich=True,
+    #                                          add_deltas=False,
+    #                                          node_type='tanh')
+    developer = HyperNEATDeveloper(substrate=substrate, sandwich=False)
 
     results = pop.epoch(generations=generations,
                         evaluator=partial(evaluate, task=task, developer=developer),

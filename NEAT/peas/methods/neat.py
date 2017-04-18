@@ -457,10 +457,12 @@ class NEATPopulation(SimplePopulation):
         
         # Neat specific:
         self.species = [] # List of species
-        # self.global_innov = 0
-        # self.innovations = {} # Keep track of global innovations
-        self.global_innov = [0] * self.n_components
-        self.innovations = [{} for _ in range(self.n_components)]
+        if self.n_components == 1:
+            self.global_innov = 0
+            self.innovations = {} # Keep track of global innovations
+        else:
+            self.global_innov = [0] * self.n_components
+            self.innovations = [{} for _ in range(self.n_components)]
         self.current_compatibility_threshold = self.compatibility_threshold
                 
     @property
@@ -580,10 +582,12 @@ class NEATPopulation(SimplePopulation):
                 specie.members.append(child)
         
         if self.innovations:
-            for i in range(self.n_components):
-                if self.innovations[i]:
-                    self.global_innov[i] = max(self.innovations[i].itervalues())
-            # self.global_innov = max(self.innovations.itervalues())
+            if self.n_components > 1:
+                for i in range(self.n_components):
+                    if self.innovations[i]:
+                        self.global_innov[i] = max(self.innovations[i].itervalues())
+            else:
+                self.global_innov = max(self.innovations.itervalues())
         
         self._gather_stats(pop)
         

@@ -45,8 +45,8 @@ class AggregatedNetwork(object):
             output = net.feed(output, add_bias, propagate)
         return output
 
-class AggregatedHyperNEATDeveloper(HyperNEATDeveloper):
-    def __init__(self, substrate,
+class AggregatedHyperNEATDeveloper:
+    def __init__(self, substrates,
                  sandwich=False,
                  feedforward=False,
                  add_deltas=False,
@@ -54,14 +54,16 @@ class AggregatedHyperNEATDeveloper(HyperNEATDeveloper):
                  min_weight=0.3,
                  activation_steps=10,
                  node_type='tanh'):
-        HyperNEATDeveloper.__init__(self, substrate, sandwich, feedforward, add_deltas,
-                                    weight_range, min_weight, activation_steps, node_type)
+        self.developers = [HyperNEATDeveloper(
+            substrate, sandwich, feedforward, add_deltas,
+            weight_range, min_weight, activation_steps, node_type)
+                           for substrate in substrates]
+
 
     def convert(self, aggregated_geno):
         nets = []
         genos = aggregated_geno.get_genos()
-        for geno in genos[: -1]:
-            nets.append(HyperNEATDeveloper.convert(self, geno))
-        nets.append(NeuralNetwork(genos[-1]))
+        for geno, dev in zip(genos, self.developers):
+            nets.append(dev.convert(self, geno))
 
         return AggregatedNetwork(nets)
