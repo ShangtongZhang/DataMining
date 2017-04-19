@@ -10,9 +10,10 @@ from neat.reporting import *
 import logging
 
 class OpenAITask:
-    n_cpus = 10
+    n_cpus = 5
     step_limits = [10000]
     runs_per_net = 1
+    runs = 1
     def __init__(self):
         self.env = self.get_env()
 
@@ -36,7 +37,6 @@ class OpenAITask:
             for i in range(self.test_repeat):
                 fitnesses[i], _ = self.play(net, False, False)
             mean_fitness = np.mean(fitnesses)
-            return mean_fitness, steps
             if mean_fitness >= self.success_threshold:
                 return mean_fitness, steps
             else:
@@ -183,11 +183,14 @@ class MountainCar(OpenAITask):
 class MountainCarCTS(OpenAITask):
     gym_name = 'MountainCarContinuous-v0'
     tag = 'mountain-car-cts'
-    step_limit = 250
     test_repeat = 10
     success_threshold = 90
     pop_sizes = [300, 250, 200, 150]
     step_limits = [300, 250, 200, 150]
+    runs = 30
+    # pop_sizes = [300]
+    # step_limits = [300]
+    # runs = 1
 
     def __init__(self):
         OpenAITask.__init__(self)
@@ -197,14 +200,13 @@ class MountainCarCTS(OpenAITask):
                 (state[1] + 0.07) / 0.14]
 
     def get_action(self, value):
-        return np.tanh(value)
+        return value
 
     def get_fitness(self, reward):
         return reward
 
     def get_env(self):
         env = gym.make(self.gym_name)
-        env._max_episode_steps = self.step_limit
         return env
 
     def set_step_limit(self, step_limit):
@@ -214,9 +216,11 @@ class MountainCarCTS(OpenAITask):
 class Pendulum(OpenAITask):
     gym_name = 'Pendulum-v0'
     tag = 'pendulum'
-    step_limit = 250
-    test_repeat = 5
-    success_threshold = -400
+    step_limits = [100]
+    pop_sizes = [300]
+    test_repeat = 0
+    runs_per_net = 10
+    success_threshold = -150
 
     def __init__(self):
         OpenAITask.__init__(self)
@@ -225,17 +229,18 @@ class Pendulum(OpenAITask):
         return [state[0], state[1], state[2] / 8]
 
     def get_action(self, value):
-        return 2 * np.tanh(value)
+        return 2 * value
 
     def get_fitness(self, reward):
         return reward
 
     def get_env(self):
         env = gym.make(self.gym_name)
-        env._max_episode_steps = self.step_limit
         return env
 
     def set_step_limit(self, step_limit):
+        self.step_limit = step_limit
+        self.env._max_episode_steps = self.step_limit
         return
 
 class SuperMario(OpenAITask):
@@ -343,7 +348,9 @@ class LunarLander(OpenAITask):
     gym_name = 'LunarLander-v2'
     tag = 'lunar-lander'
     test_repeat = 0
-    runs = 30
+    runs_per_net = 10
+    runs = 10
+    n_cpus = 5
     success_threshold = 200
     pop_sizes = [300, 250, 200]
 
