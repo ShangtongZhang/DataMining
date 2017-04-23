@@ -8,9 +8,10 @@ import nes
 from itertools import product
 from neat.reporting import *
 import logging
+import time
 
 class OpenAITask:
-    n_cpus = 5
+    n_cpus = 4
     step_limits = [10000]
     runs_per_net = 1
     runs = 1
@@ -62,32 +63,37 @@ class OpenAITask:
         for pop_size in self.pop_sizes:
             for step_limit in self.step_limits:
                 success_generation = np.zeros(self.runs)
+                success_time = np.zeros(self.runs)
                 fitness_info = []
                 for r in range(self.runs):
                     logger.debug('pop size: %d, step limit: %d, run: %d' % (pop_size, step_limit, r))
+                    start_time = time.time()
                     winner, success_generation[r], all_fitnesses = self.evolve(config, pop_size, step_limit)
+                    success_time[r] = time.time() - start_time
                     fitness_info.append(all_fitnesses)
-                results[(pop_size, step_limit)] = (success_generation, fitness_info, winner)
-                with open('statistics-%s.bin' % self.tag, 'wb') as f:
+                results[(pop_size, step_limit)] = (success_generation, fitness_info, winner, success_time)
+                with open('statistics-%s-new.bin' % self.tag, 'wb') as f:
                     pickle.dump(results, f)
 
     def draw(self):
-        with open('statistics-%s.bin' % self.tag, 'rb') as f:
+        with open('statistics-%s-new.bin' % self.tag, 'rb') as f:
             results = pickle.load(f)
         for pop_size in self.pop_sizes:
             for step_limit in self.step_limits:
-                success_generation, all_steps, winner = results[(pop_size, step_limit)]
+                success_generation, all_steps, winner, success_time = results[(pop_size, step_limit)]
                 success_generation += 1
                 success_fitness = np.zeros(self.runs)
                 for run, steps in enumerate(all_steps):
                     for generation_steps in steps:
                         success_fitness[run] += np.sum(np.array(generation_steps))
-                print 'pop size: %d, step limit: %d, avg generation: %f(%f), avg steps %f(%f)' % (
+                print 'pop size: %d, step limit: %d, avg generation: %f(%f), avg steps %f(%f), avg time steps %f(%f)' % (
                     pop_size, step_limit,
                     np.mean(success_generation),
                     np.std(success_generation) / np.sqrt(self.runs),
                     np.mean(success_fitness),
-                    np.std(success_fitness) / np.sqrt(self.runs)
+                    np.std(success_fitness) / np.sqrt(self.runs),
+                    np.mean(success_time),
+                    np.std(success_time) / np.sqrt(self.runs)
                 )
         with open('winner-%s.bin' % self.tag, 'wb') as f:
             pickle.dump(winner, f)
@@ -125,8 +131,10 @@ class CartPole(OpenAITask):
     success_threshold = 195
     angle_limit_radians = 15 * math.pi / 180
     position_limit = 2.4
-    pop_sizes = [300, 250, 200, 150, 100]
+    # pop_sizes = [300, 250, 200, 150, 100]
+    pop_sizes = [300]
     step_limits = [200]
+    runs = 30
 
     def __init__(self):
         OpenAITask.__init__(self)
@@ -147,16 +155,20 @@ class CartPole(OpenAITask):
         return gym.make(self.gym_name)
 
     def set_step_limit(self, step_limit):
+        self.step_limit = step_limit
         return
 
 class MountainCar(OpenAITask):
     gym_name = 'MountainCar-v0'
     tag = 'mountain-car'
     step_limit = 250
-    test_repeat = 10
+    test_repeat = 0
+    runs_per_net = 10
     success_threshold = -110
-    pop_sizes = [300, 250, 200, 150]
-    step_limits = [300, 250, 200, 150]
+    # pop_sizes = [300, 250, 200, 150]
+    pop_sizes = [300]
+    step_limits = [300]
+    runs = 30
 
     def __init__(self):
         OpenAITask.__init__(self)
@@ -188,8 +200,8 @@ class MountainCarCTS(OpenAITask):
     pop_sizes = [300, 250, 200, 150]
     step_limits = [300, 250, 200, 150]
     runs = 30
-    # pop_sizes = [300]
-    # step_limits = [300]
+    pop_sizes = [300]
+    step_limits = [300]
     # runs = 1
 
     def __init__(self):
@@ -373,12 +385,12 @@ class LunarLander(OpenAITask):
     def set_step_limit(self, step_limit):
         self.step_limit = step_limit
 
-# task = CartPole()
-# task = MountainCar()
+task = CartPole()
 # task = MountainCarCTS()
+# task = MountainCar()
 # task = Pendulum()
 # task = SuperMario()
-task = LunarLander()
+# task = LunarLander()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
